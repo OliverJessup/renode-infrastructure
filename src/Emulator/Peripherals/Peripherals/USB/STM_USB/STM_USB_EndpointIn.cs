@@ -85,6 +85,10 @@ public partial class STM_USB
 
         protected override void OnEndpointEnable()
         {
+            // A previous transfer's completion flag must not leak into a freshly armed one: if firmware
+            // never serviced/cleared it in time, it would otherwise be misread as this transfer completing
+            // before any data has actually been sent, truncating it.
+            transferCompleteInterruptFlag.Value = false;
             if(transferSizeField.Value == 0)
             {
                 NewPacket?.Invoke();
