@@ -15,6 +15,7 @@ using Antmicro.Renode.Core.USB;
 using Antmicro.Renode.Extensions.Utilities.USB;
 using Antmicro.Renode.Logging;
 using Antmicro.Renode.Peripherals.UART;
+using Antmicro.Renode.Time;
 
 namespace Antmicro.Renode.Peripherals.USB;
 
@@ -74,10 +75,21 @@ public class USB_UART : USBHost, IUART, IExternal
                 this.WarningLog("Device doesn't have CDC or CDC-Data interface");
                 return;
             }
-            ep0.CDCControlLineState(dataIface.Number, rts: false, dtr: true, () =>
+            // Some device stacks (e.g. STM32Cube's USB device middleware) need a brief moment to
+            // re-arm EP0 for the next control transfer after completing the descriptor read above;
+            // issuing this request immediately can race the device and stall the control endpoint.
+            // Must use the same time source/domain as the rest of USBHost's enumeration delays
+            // (the master time source), otherwise the scheduled action's domain mismatches and it
+            // only fires opportunistically whenever unrelated bus activity happens to sync.
+            var timeSource = EmulationManager.Instance.CurrentEmulation.MasterTimeSource;
+            var deadline = new TimeStamp(timeSource.ElapsedVirtualTime + TimeInterval.FromMilliseconds(50), timeSource.Domain);
+            timeSource.ExecuteInSyncedState(_ =>
             {
-                ListenOnInterface(conn, cdcDescriptors, dataDescriptors);
-            });
+                ep0.CDCControlLineState(dataIface.Number, rts: false, dtr: true, () =>
+                {
+                    ListenOnInterface(conn, cdcDescriptors, dataDescriptors);
+                });
+            }, deadline);
         });
     }
 
