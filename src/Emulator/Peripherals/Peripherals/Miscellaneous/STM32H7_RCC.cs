@@ -66,7 +66,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         public override void Reset()
         {
-            d2ClockReady = false;
+            d2ClockReady = true;
             d1CpreDivider = 1;
             d1PpreDivider = 1;
             hpreDivider = 1;
@@ -134,6 +134,10 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         public bool EmulateD2ClockReadyAfterFirstPoll { get; set; }
 
+        // Emulates the CM4 domain clock ready flag using real synchronization events instead of
+        // counting incidental register reads (RCC_CR is read for many unrelated reasons):
+        // - becomes false once HSION is first set (SystemInit, before the first boot sync loop)
+        // - becomes true once the HSEM peripheral clock is enabled (before the second boot sync loop)
         private bool d2ClockReady;
 
         private void DefineRegisters()
@@ -146,6 +150,11 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                         {
                             this.Log(LogLevel.Warning, "Cannot disable HSI while it is used to drive the sys_ck. Ignoring write.");
                             hsion.Value = previous;
+                        }
+                        if(EmulateD2ClockReadyAfterFirstPoll && value)
+                        {
+                            // SystemInit sets HSION very early, before the first boot sync loop runs.
+                            d2ClockReady = false;
                         }
                     })
                 .WithTag("HSIKERON", 1, 1)
@@ -177,14 +186,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 .WithFlag(12, out var hsi48on, name: "HSI48ON")
                 .WithFlag(13, FieldMode.Read, valueProviderCallback: _ => hsi48on.Value, name: "HSI48RDY")
                 .WithTag("D1CKRDY", 14, 1)
-                .WithFlag(15, FieldMode.Read, valueProviderCallback: _ => d2ClockReady,
-                    readCallback: (_, __) =>
-                    {
-                        if(EmulateD2ClockReadyAfterFirstPoll)
-                        {
-                            d2ClockReady = true;
-                        }
-                    }, name: "D2CKRDY")
+                .WithFlag(15, FieldMode.Read, valueProviderCallback: _ => EmulateD2ClockReadyAfterFirstPoll && d2ClockReady, name: "D2CKRDY")
                 .WithFlag(16, out hseon, name: "HSEON",
                     writeCallback: (previous, value) =>
                     {
@@ -847,7 +849,16 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     writeCallback: (_, value) => EnableOrDisableRegisteredPeripheral(RegistrationPeripheralAlias.ADC3, value),
                     valueProviderCallback: _ => IsPeripheralEnabled(RegistrationPeripheralAlias.ADC3))
                 .WithFlag(25, name: "HSEMEN",
-                    writeCallback: (_, value) => EnableOrDisableRegisteredPeripheral(RegistrationPeripheralAlias.HSEM, value),
+                    writeCallback: (_, value) =>
+                    {
+                        EnableOrDisableRegisteredPeripheral(RegistrationPeripheralAlias.HSEM, value);
+                        if(EmulateD2ClockReadyAfterFirstPoll && value)
+                        {
+                            // The second boot sync loop enables the HSEM clock just before releasing
+                            // the semaphore that wakes CM4, so treat this as "CM4 is ready" too.
+                            d2ClockReady = true;
+                        }
+                    },
                     valueProviderCallback: _ => IsPeripheralEnabled(RegistrationPeripheralAlias.HSEM))
                 .WithReservedBits(26, 2)
                 .WithFlag(28, name: "BKPRAMEN",
