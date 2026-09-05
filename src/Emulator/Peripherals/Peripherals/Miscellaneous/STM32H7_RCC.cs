@@ -66,6 +66,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         public override void Reset()
         {
+            d2ClockReady = false;
             d1CpreDivider = 1;
             d1PpreDivider = 1;
             hpreDivider = 1;
@@ -131,6 +132,10 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         public long Size => 0x400;
 
+        public bool EmulateD2ClockReadyAfterFirstPoll { get; set; }
+
+        private bool d2ClockReady;
+
         private void DefineRegisters()
         {
             Registers.ClockControl.Define(this, 0x01)
@@ -172,7 +177,14 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 .WithFlag(12, out var hsi48on, name: "HSI48ON")
                 .WithFlag(13, FieldMode.Read, valueProviderCallback: _ => hsi48on.Value, name: "HSI48RDY")
                 .WithTag("D1CKRDY", 14, 1)
-                .WithTag("D2CKRDY", 15, 1)
+                .WithFlag(15, FieldMode.Read, valueProviderCallback: _ => d2ClockReady,
+                    readCallback: (_, __) =>
+                    {
+                        if(EmulateD2ClockReadyAfterFirstPoll)
+                        {
+                            d2ClockReady = true;
+                        }
+                    }, name: "D2CKRDY")
                 .WithFlag(16, out hseon, name: "HSEON",
                     writeCallback: (previous, value) =>
                     {
