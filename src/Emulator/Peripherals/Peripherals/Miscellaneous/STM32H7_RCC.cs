@@ -856,7 +856,13 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                         {
                             // The second boot sync loop enables the HSEM clock just before releasing
                             // the semaphore that wakes CM4, so treat this as "CM4 is ready" too.
-                            d2ClockReady = true;
+                            // Only CM7's write counts: CM4 enables the same clock early in its
+                            // own boot (before parking in STOP), which must not look like
+                            // "CM4 clocks running" to CM7's first boot-sync loop.
+                            if(machine.SystemBus.TryGetCurrentCPU(out var cpu) && cpu.Model == "cortex-m7")
+                            {
+                                d2ClockReady = true;
+                            }
                         }
                     },
                     valueProviderCallback: _ => IsPeripheralEnabled(RegistrationPeripheralAlias.HSEM))
