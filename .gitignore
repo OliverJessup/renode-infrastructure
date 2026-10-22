@@ -2,6 +2,9 @@
 *~
 tags
 
+#macos
+.DS_Store
+
 #bin
 *.so
 bin
