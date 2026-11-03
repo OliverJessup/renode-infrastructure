@@ -872,10 +872,14 @@ namespace Antmicro.Renode.Peripherals.Analog
             {
                 /* dualMode is not really supported, let's mock ADEN and ADDIS so software can
                  * disable the ADC2 and checks that it is disabled.
+                 * ADVREGEN/DEEPPWD are required too: HAL_ADC_Init() enables the internal
+                 * voltage regulator and verifies that bit 28 sticks before proceeding.
                  */
                 registers.Add((long)Registers.Control + 0x100, new DoubleWordRegister(this)
                     .WithTaggedFlag("ADEN", 0)
                     .WithFlag(1, valueProviderCallback: _ => false, name: "ADDIS")
+                    .WithFlag(28, name: "ADVREGEN")
+                    .WithFlag(29, name: "DEEPPWD")
                 );
             }
 
